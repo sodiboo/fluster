@@ -1,0 +1,8 @@
+.direnv/
+target/
+result*
+/flutter-engine
+
+# Added by cargo
+
+/target
