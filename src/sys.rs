@@ -1,4 +1,4 @@
-#![allow(non_snake_case, non_upper_case_globals)]
+#![allow(clippy::pedantic, non_snake_case, non_upper_case_globals)]
 include!(concat!(env!("OUT_DIR"), "/embedder.rs"));
 
 // the rest of this file is drop glue for the generated types
@@ -31,7 +31,7 @@ macro_rules! impl_drop_for_tagged_union {
                 let union = self.$union:ident;
                 unsafe match self.$tag:ident: $tag_type:ty {
                     $(
-                        $variant:ident => $field:ident,
+                        $variant:ident => union.$field:ident,
                     )*
                 } else $default:block
             }
@@ -59,8 +59,8 @@ impl_drop_for_tagged_union! {
         fn drop(&mut self) {
             let union = self.__bindgen_anon_1;
             unsafe match self.type_: FlutterOpenGLTargetType {
-                Texture => texture,
-                Framebuffer => framebuffer,
+                Texture => union.texture,
+                Framebuffer => union.framebuffer,
             } else {
                 panic!("Unknown FlutterOpenGLTargetType. Cannot drop it.");
             }
@@ -71,11 +71,11 @@ impl_drop_for_tagged_union! {
         fn drop(&mut self) {
             let union = self.__bindgen_anon_1;
             unsafe match self.type_: FlutterBackingStoreType {
-                OpenGL => open_gl,
-                Software => software,
-                Software2 => software2,
-                Metal => metal,
-                Vulkan => vulkan,
+                OpenGL => union.open_gl,
+                Software => union.software,
+                Software2 => union.software2,
+                Metal => union.metal,
+                Vulkan => union.vulkan,
             } else {
                 panic!("Unknown FlutterBackingStoreType. Cannot drop it.");
             }
@@ -85,9 +85,10 @@ impl_drop_for_tagged_union! {
 
 impl Drop for FlutterMetalBackingStore {
     fn drop(&mut self) {
-        if self.struct_size != std::mem::size_of::<FlutterMetalBackingStore>() {
-            panic!("FlutterMetalBackingStore has an unexpected size. It likely has a union tag that i don't know how to handle. It cannot be safely dropped.");
-        }
+        assert!(
+            self.struct_size == std::mem::size_of::<FlutterMetalBackingStore>(),
+            "FlutterMetalBackingStore has an unexpected size. It likely has a union tag that i don't know how to handle. It cannot be safely dropped."
+        );
 
         unsafe {
             ::std::mem::ManuallyDrop::drop(&mut self.__bindgen_anon_1.texture);

@@ -1,41 +1,23 @@
 {
   "nodes": {
-    "flutter-engine": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1729720684,
-        "narHash": "sha256-KfBpCnKEE7i4tVq344x7vPrwm1o3CpkBMARlB2tEn/o=",
-        "owner": "flutter",
-        "repo": "engine",
-        "rev": "db49896cf25ceabc44096d5f088d86414e05a7aa",
-        "type": "github"
-      },
-      "original": {
-        "owner": "flutter",
-        "ref": "3.24.4",
-        "repo": "engine",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1729839762,
-        "narHash": "sha256-OpLezNyApwwSRrzvUsgSyMVpeiEkURKPJPX9jofKigQ=",
+        "lastModified": 1734649271,
+        "narHash": "sha256-4EVBRhOjMDuGtMaofAIqzJbg4Ql7Ai0PSeuVZTHjyKQ=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "8c64c8887fd3c24b97781b49cc8ef87b283fc3bd",
+        "rev": "d70bd19e0a38ad4790d3913bf08fcbfc9eeca507",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
+        "ref": "nixos-unstable",
         "repo": "nixpkgs",
-        "rev": "8c64c8887fd3c24b97781b49cc8ef87b283fc3bd",
         "type": "github"
       }
     },
     "root": {
       "inputs": {
-        "flutter-engine": "flutter-engine",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }
@@ -47,11 +29,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1730601085,
-        "narHash": "sha256-Sgax33jGuvVHTjl1P78IwzlhAGyOxtx5Q26inKja8S4=",
+        "lastModified": 1734834660,
+        "narHash": "sha256-bm8V+Cu8rWJA+vKQnc94mXTpSDgvedyoDKxTVi/uJfw=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "8d1b40f8dfd7539aaa3de56e207e22b3cc451825",
+        "rev": "b070e6030118680977bc2388868c4b3963872134",
         "type": "github"
       },
       "original": {

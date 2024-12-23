@@ -1,3 +1,5 @@
+use tracing::error;
+
 use crate::sys;
 
 simple_enum! {
@@ -61,7 +63,7 @@ simple_enum! {
 
 pub struct SoftwareBackingStore {
     /// A pointer to the raw bytes of the allocation described by this software backing store.
-    pub allocation: *const u8,
+    pub allocation: *mut u8,
     /// The number of bytes in a single row of the allocation.
     pub row_bytes: usize,
     /// The number of rows in the allocation.
@@ -72,7 +74,7 @@ pub struct SoftwareBackingStore {
 
 extern "C" fn destroy_software_callback(user_data: *mut std::ffi::c_void) {
     let _ = user_data;
-    println!("destroy_software_callback");
+    // hopefully the user provided a compositor destructor lol
 }
 const _: sys::VoidCallback = Some(destroy_software_callback);
 
@@ -91,12 +93,18 @@ impl From<SoftwareBackingStore> for sys::FlutterSoftwareBackingStore2 {
     }
 }
 impl SoftwareBackingStore {
-    pub fn from_raw(raw: &sys::FlutterSoftwareBackingStore2) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterSoftwareBackingStore2) -> Self {
+        let our_callback: sys::VoidCallback = Some(destroy_software_callback);
+        if raw.destruction_callback != Some(destroy_software_callback) {
+            error!("from_raw(&sys::FlutterSoftwareBackingStore2) with destruction callback: {:?} instead of {:?}",
+                raw.destruction_callback, our_callback
+            );
+        }
         assert!(raw.destruction_callback == Some(destroy_software_callback),
             "from_raw(&sys::FlutterSoftwareBackingStore2) for a software buffer for which we didn't set the destruction callback"
         );
         Self {
-            allocation: raw.allocation as *const u8,
+            allocation: raw.allocation as *mut u8,
             row_bytes: raw.row_bytes,
             height: raw.height,
             pixel_format: raw.pixel_format.try_into().unwrap(),
@@ -136,7 +144,7 @@ mod callbacks {
         row_bytes: usize,
         height: usize,
     ) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::Software(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -145,7 +153,7 @@ mod callbacks {
 
         user_data
             .handler
-            .surface_present(allocation as *const u8, row_bytes, height)
+            .surface_present(allocation.cast::<u8>(), row_bytes, height)
     }
 
     const _: sys::SoftwareSurfacePresentCallback = Some(surface_present);

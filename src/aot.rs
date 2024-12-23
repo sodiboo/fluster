@@ -9,7 +9,8 @@ pub enum AOTDataSource {
     ElfPath(PathBuf),
 }
 
-/// An opaque object that describes the AOT data that can be used to launch a Flutter [crate::Engine] instance in AOT mode.
+/// An opaque object that describes the AOT data that can be used to launch a Flutter [`crate::Engine`] instance in AOT mode.
+#[must_use]
 pub struct AOTData {
     pub(crate) data: sys::FlutterEngineAOTData,
 }
@@ -21,15 +22,17 @@ impl AOTData {
     ///
     /// This function is static because it is a result of how the Dart VM was compiled,
     /// and not a property of any specific instance of the Dart VM.
+    #[must_use]
     pub fn is_aot() -> bool {
         unsafe { sys::RunsAOTCompiledDartCode() }
     }
 
     /// Creates the necessary data structures to launch a Flutter Dart application in AOT mode.
     ///
-    /// Returns [Ok()] if the AOT data could be successfully resolved.
+    /// Returns [`Ok()`] if the AOT data could be successfully resolved.
     ///
-    /// Always returns [Err()] if !([Self::is_aot()]).
+    /// Always returns [`Err()`] if !([`Self::is_aot()`]).
+    #[allow(clippy::missing_panics_doc)]
     pub fn new(source: &AOTDataSource) -> crate::Result<Self> {
         let mut data: sys::FlutterEngineAOTData = unsafe { std::mem::zeroed() };
 

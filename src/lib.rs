@@ -1,5 +1,12 @@
-#![warn(clippy::todo)]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![warn(clippy::todo)]
+#![deny(clippy::print_stderr, clippy::print_stdout)] // use tracing instead
+// sure let's do pedantic lints
+#![warn(clippy::pedantic)]
+#![allow(clippy::wildcard_imports)] // useful when nesting a module in a file
+#![allow(clippy::missing_errors_doc)] // currently no proper docs so yeah
+#![allow(clippy::too_many_lines)] // ugh, fix it later
+#![allow(clippy::semicolon_if_nothing_returned)] // i actually disagree with this one.
 
 macro_rules! simple_enum {
     (
@@ -49,14 +56,16 @@ macro_rules! simple_enum {
 }
 
 macro_rules! bitfield {
+    (@ $value:expr$(; $otherwise:expr)?) => {
+        $value
+    };
     (
-
         $(
             $(#[$meta:meta])*
             $v:vis struct $name:ident($c_type:ty) {
                 $(
                     $(#[$variant_meta:meta])*
-                    $variant:ident
+                    $variant:ident$( = $value:expr)?
                 ),* $(,)?
             }
         )*
@@ -70,7 +79,7 @@ macro_rules! bitfield {
                 $(
                     $(#[$variant_meta])*
                     #[allow(non_upper_case_globals)]
-                    pub const $variant: Self = Self(<$c_type>::$variant);
+                    pub const $variant: Self = Self(bitfield!(@ $($value;)? <$c_type>::$variant));
                 )*
             }
 
@@ -129,8 +138,36 @@ macro_rules! modules {
     };
 }
 
-// mod proc_table;
+pub mod proc_table;
 mod sys;
+
+const _CHECK_ENGINE_VERSION: () = {
+    const TARGET_VERSION: usize = 1;
+    use sys::FLUTTER_ENGINE_VERSION;
+
+    // this is a macro so that the error span is less noisy
+    macro_rules! flutter_version_mismatch {
+        () => {
+            panic!("{}", ::const_format::formatcp!(
+                r"
+
+                The `fluster` crate was authored against the stable Flutter API at version {TARGET_VERSION}.
+                There has been a serious breakage in the API. It is now at version {FLUTTER_ENGINE_VERSION}.
+
+                Please check for updates to the `fluster` crate, and consult the Flutter changelog for breaking changes.
+
+                You can also try downgrading the Flutter engine to the version that `fluster` was authored against.
+                There is no way to proceed with the current version of the Flutter engine.
+
+                "
+            ));
+        };
+    }
+
+    if FLUTTER_ENGINE_VERSION != TARGET_VERSION {
+        flutter_version_mismatch!();
+    }
+};
 
 modules![
     aot,
@@ -143,6 +180,7 @@ modules![
     geometry,
     graphics,
     locale,
+    pointer,
     renderer,
     semantics,
     task_runners,

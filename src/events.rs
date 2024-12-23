@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::{ffi::CString, time::Duration};
 
 use crate::{sys, ViewId};
 
@@ -47,143 +47,6 @@ impl From<WindowMetricsEvent> for sys::FlutterWindowMetricsEvent {
 }
 
 simple_enum! {
-    /// The phase of the pointer event.
-    pub enum PointerPhase(sys::FlutterPointerPhase) {
-        Cancel,
-        /// The pointer, which must have been down (see Down), is now up.
-        ///
-        /// For touch, this means that the pointer is no longer in contact with the
-        /// screen. For a mouse, it means the last button was released. Note that if
-        /// any other buttons are still pressed when one button is released, that
-        /// should be sent as a Move rather than a Up.
-        Up,
-        /// The pointer, which must have been up, is now down.
-        ///
-        /// For touch, this means that the pointer has come into contact with the
-        /// screen. For a mouse, it means a button is now pressed. Note that if any
-        /// other buttons are already pressed when a new button is pressed, that
-        /// should be sent as a Move rather than a Down.
-        Down,
-        /// The pointer moved while down.
-        ///
-        /// This is also used for changes in button state that don't cause a Down or
-        /// Up, such as releasing one of two pressed buttons.
-        Move,
-        /// The pointer is now sending input to Flutter. For instance, a mouse has
-        /// entered the area where the Flutter content is displayed.
-        ///
-        /// A pointer should always be added before sending any other events.
-        Add,
-        /// The pointer is no longer sending input to Flutter. For instance, a mouse
-        /// has left the area where the Flutter content is displayed.
-        ///
-        /// A removed pointer should no longer send events until sending a new Add.
-        Remove,
-        /// The pointer moved while up.
-        Hover,
-        /// A pan/zoom started on this pointer.
-        PanZoomStart,
-        /// The pan/zoom updated.
-        PanZoomUpdate,
-        /// The pan/zoom ended.
-        PanZoomEnd,
-    }
-
-    pub enum PointerDeviceKind(sys::FlutterPointerDeviceKind) {
-        Mouse,
-        Touch,
-        Stylus,
-        Trackpad,
-    }
-
-    /// The type of a pointer signal.
-    pub enum PointerSignalKind(sys::FlutterPointerSignalKind) {
-        None,
-        Scroll,
-        ScrollInertiaCancel,
-        Scale,
-    }
-}
-
-bitfield! {
-    /// Flags for the `buttons` field of `FlutterPointerEvent` when `device_kind`
-    /// is [FlutterPointerDeviceKind::Mouse].
-    pub struct PointerMouseButtons(sys::FlutterPointerMouseButtons) {
-        Primary,
-        Secondary,
-        Middle,
-        Back,
-        Forward,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PointerEvent {
-    /// The identifier of the view that received the pointer event.
-    pub view_id: ViewId,
-    /// The phase of the pointer event.
-    pub phase: PointerPhase,
-    /// The timestamp at which the pointer event was generated. The timestamp
-    /// should be specified in microseconds and the clock should be the same as
-    /// that used by `FlutterEngineGetCurrentTime`.
-    pub timestamp: usize,
-    /// The x coordinate of the pointer event in physical pixels.
-    pub x: f64,
-    /// The y coordinate of the pointer event in physical pixels.
-    pub y: f64,
-    /// An optional device identifier. If this is not specified, it is assumed
-    /// that the embedder has no multi-touch capability.
-    pub device: i32,
-    pub signal_kind: PointerSignalKind,
-    /// The x offset of the scroll in physical pixels.
-    pub scroll_delta_x: f64,
-    /// The y offset of the scroll in physical pixels.
-    pub scroll_delta_y: f64,
-    /// The type of the device generating this event.
-    //
-    // we don't support not setting this field
-    // but if we did it'd be Option<FlutterPointerDeviceKind> with device_kind.map_or(0, Into::into)
-    // and flutter has a doc comment for such a use case:
-    //
-    // Backwards compatibility note: If this is not set, the device will be
-    // treated as a mouse, with the primary button set for `kDown` and `kMove`.
-    // If set explicitly to `kFlutterPointerDeviceKindMouse`, you must set the correct buttons.
-    pub device_kind: PointerDeviceKind,
-    /// The buttons currently pressed, if any.
-    pub buttons: i64,
-    /// The x offset of the pan/zoom in physical pixels.
-    pub pan_x: f64,
-    /// The y offset of the pan/zoom in physical pixels.
-    pub pan_y: f64,
-    /// The scale of the pan/zoom, where 1.0 is the initial scale.
-    pub scale: f64,
-    /// The rotation of the pan/zoom in radians, where 0.0 is the initial angle.
-    pub rotation: f64,
-}
-impl From<PointerEvent> for sys::FlutterPointerEvent {
-    fn from(event: PointerEvent) -> Self {
-        Self {
-            struct_size: std::mem::size_of::<Self>(),
-            phase: event.phase.into(),
-            timestamp: event.timestamp,
-            x: event.x,
-            y: event.y,
-            device: event.device,
-            signal_kind: event.signal_kind.into(),
-            scroll_delta_x: event.scroll_delta_x,
-            scroll_delta_y: event.scroll_delta_y,
-            device_kind: event.device_kind.into(),
-            buttons: event.buttons,
-            pan_x: event.pan_x,
-            pan_y: event.pan_y,
-            scale: event.scale,
-            rotation: event.rotation,
-            view_id: event.view_id.0,
-        }
-    }
-}
-
-simple_enum! {
     pub enum KeyPhase(sys::FlutterKeyEventType) {
         Up,
         Down,
@@ -220,13 +83,12 @@ simple_enum! {
 /// `FlutterKeyEvent`s, for example, when a key down message is received for a
 /// key that has already been pressed according to the record. This is to ensure
 /// some `FlutterKeyEvent` arrives at the framework before raw key message.
-/// See https://github.com/flutter/flutter/issues/87230.
+/// See <https://github.com/flutter/flutter/issues/87230>.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyEvent {
-    /// The timestamp at which the key event was generated. The timestamp should
-    /// be specified in microseconds and the clock should be the same as that used
-    /// by `FlutterEngineGetCurrentTime`.
-    pub timestamp: f64,
+    /// The timestamp at which the key event was generated.
+    /// The clock should be the same as that used by [`crate::Engine::get_current_time`].
+    pub timestamp: Duration,
     /// The phase of this key.
     // KeyEventType called KeyPhase in this library because it matches PointerPhase
     // and `type: KeyEventType` is a reserved keyword in Rust.
@@ -247,7 +109,7 @@ pub struct KeyEvent {
     /// The only case that `logical` might be 0 is when this is an empty event.
     /// See `FlutterKeyEvent` for introduction.
     pub logical: u64,
-    /// Character input from the event. Can be [None]. Ignored for [KeyEventKind::Up].
+    /// Character input from the event. Can be [None]. Ignored for [`KeyPhase::Up`].
     pub character: Option<CString>,
     /// True if this event does not correspond to a native event.
     ///
@@ -272,7 +134,11 @@ impl From<KeyEvent> for (Option<*mut std::ffi::c_char>, sys::FlutterKeyEvent) {
             character,
             sys::FlutterKeyEvent {
                 struct_size: std::mem::size_of::<sys::FlutterKeyEvent>(),
-                timestamp: event.timestamp,
+
+                // they force us to cast microseconds to f64. dying.
+                #[allow(clippy::cast_precision_loss)]
+                timestamp: event.timestamp.as_micros() as f64,
+
                 type_: event.phase.into(),
                 physical: event.physical,
                 logical: event.logical,

@@ -174,13 +174,13 @@ type TextRange<T = usize> = std::ops::Range<T>;
 
 /// Indicates how the assistive technology should treat the string.
 ///
-/// See: https://api.flutter.dev/flutter/dart-ui/StringAttribute-class.html
+/// See: <https://api.flutter.dev/flutter/dart-ui/StringAttribute-class.html>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StringAttribute {
     /// Indicates the assistive technology should announce out the string character
     /// by character.
     ///
-    /// See: https://api.flutter.dev/flutter/dart-ui/SpellOutStringAttribute-class.html
+    /// See: <https://api.flutter.dev/flutter/dart-ui/SpellOutStringAttribute-class.html>
     SpellOut {
         /// The range of characters for which this attribute applies.
         range: TextRange,
@@ -188,7 +188,7 @@ pub enum StringAttribute {
     /// Indicates the assistive technology should announce the string using the
     /// specified locale.
     ///
-    /// See: https://api.flutter.dev/flutter/dart-ui/LocaleStringAttribute-class.html
+    /// See: <https://api.flutter.dev/flutter/dart-ui/LocaleStringAttribute-class.html>
     Locale {
         /// The range of characters for which this attribute applies.
         range: TextRange,
@@ -198,13 +198,14 @@ pub enum StringAttribute {
 }
 
 impl StringAttribute {
+    #[must_use]
     pub fn range(&self) -> TextRange {
         let (StringAttribute::SpellOut { range } | StringAttribute::Locale { range, .. }) = self;
 
         range.clone()
     }
 
-    pub fn from_raw(raw: &sys::FlutterStringAttribute) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterStringAttribute) -> Self {
         let range = raw.start..raw.end;
 
         match raw.type_ {
@@ -259,7 +260,7 @@ impl AttributedString {
 /// compositing. Updates are then pushed to embedders via the registered
 /// `FlutterUpdateSemanticsCallback2`.
 ///
-/// See: https://api.flutter.dev/flutter/semantics/SemanticsNode-class.html
+/// See: <https://api.flutter.dev/flutter/semantics/SemanticsNode-class.html>
 pub struct SemanticsNode {
     /// The unique identifier for this node.
     pub id: i32,
@@ -292,9 +293,9 @@ pub struct SemanticsNode {
     pub hint: AttributedString,
     /// A textual description of the current value of the node.
     pub value: AttributedString,
-    /// A value that `value` will have after a [SemanticAction::Increase] action has been performed.
+    /// A value that `value` will have after a [`SemanticsAction::Increase`] action has been performed.
     pub increased_value: AttributedString,
-    /// A value that `value` will have after a [SemanticAction::Decrease] action has been performed.
+    /// A value that `value` will have after a [`SemanticsAction::Decrease`] action has been performed.
     pub decreased_value: AttributedString,
     /// The reading direction for `label`, `value`, `hint`, `increasedValue`,
     /// `decreasedValue`, and `tooltip`.
@@ -320,7 +321,7 @@ pub struct SemanticsNode {
 }
 
 impl SemanticsNode {
-    pub fn from_raw(raw: &sys::FlutterSemanticsNode2) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterSemanticsNode2) -> Self {
         Self {
             id: raw.id,
             flags: raw.flags.into(),
@@ -396,7 +397,7 @@ impl SemanticsNode {
 /// to be used in place of the standard actions in the `FlutterSemanticsAction`
 /// enum.
 ///
-/// See: https://api.flutter.dev/flutter/semantics/CustomSemanticsAction-class.html
+/// See: <https://api.flutter.dev/flutter/semantics/CustomSemanticsAction-class.html>
 pub struct SemanticsCustomAction {
     /// The unique custom action or action override ID.
     pub id: i32,
@@ -410,7 +411,7 @@ pub struct SemanticsCustomAction {
 }
 
 impl SemanticsCustomAction {
-    pub fn from_raw(raw: &sys::FlutterSemanticsCustomAction2) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterSemanticsCustomAction2) -> Self {
         Self {
             id: raw.id,
             override_action: raw.override_action.into(),
@@ -426,7 +427,7 @@ pub struct SemanticsUpdate {
 }
 
 impl SemanticsUpdate {
-    pub fn from_raw(raw: &sys::FlutterSemanticsUpdate2) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterSemanticsUpdate2) -> Self {
         Self {
             nodes: unsafe { std::slice::from_raw_parts(raw.nodes, raw.node_count) }
                 .iter()
@@ -450,7 +451,7 @@ impl Engine {
     /// Enable or disable accessibility semantics.
     ///
     /// When enabled, changes to the semantic contents of the window are sent via the
-    /// [EngineHandler::update_semantics] callback passed in [FlutterProjectArgs].
+    /// [`EngineHandler::update_semantics`] callback passed in [`FlutterProjectArgs`].
     pub fn update_semantics_enabled(&mut self, enabled: bool) -> crate::Result<()> {
         unsafe { sys::UpdateSemanticsEnabled(self.inner.engine, enabled) }.to_result()
     }

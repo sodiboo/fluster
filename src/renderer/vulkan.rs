@@ -1,12 +1,14 @@
 use std::ffi::{CStr, CString};
 
+use tracing::trace;
+
 use crate::{sys, FrameInfo};
 
 pub struct VulkanImage {
-    /// Handle to the VkImage that is owned by the embedder. The engine will
+    /// Handle to the `VkImage` that is owned by the embedder. The engine will
     /// bind this image for writing the frame.
     pub image_handle: sys::FlutterVulkanImageHandle,
-    /// The VkFormat of the image (for example: VK_FORMAT_R8G8B8A8_UNORM).
+    /// The `VkFormat` of the image (for example: `VK_FORMAT_R8G8B8A8_UNORM`).
     pub format: u32,
 }
 impl From<VulkanImage> for sys::FlutterVulkanImage {
@@ -39,9 +41,9 @@ pub struct VulkanBackingStore {
 }
 
 extern "C" fn destroy_vulkan_callback(user_data: *mut std::ffi::c_void) {
-    println!("destroy_vulkan_callback");
+    trace!("destroy_vulkan_callback");
 
-    let vulkan_image = unsafe { Box::from_raw(user_data as *mut sys::FlutterVulkanImage) };
+    let vulkan_image = unsafe { Box::from_raw(user_data.cast::<sys::FlutterVulkanImage>()) };
     drop(vulkan_image);
 }
 const _: sys::VoidCallback = Some(destroy_vulkan_callback);
@@ -54,7 +56,7 @@ impl From<VulkanBackingStore> for sys::FlutterVulkanBackingStore {
 
         Self {
             struct_size: std::mem::size_of::<Self>(),
-            user_data: image as *mut std::ffi::c_void,
+            user_data: image.cast::<std::ffi::c_void>(),
             destruction_callback: Some(destroy_vulkan_callback),
 
             image,
@@ -62,7 +64,7 @@ impl From<VulkanBackingStore> for sys::FlutterVulkanBackingStore {
     }
 }
 impl VulkanBackingStore {
-    pub fn from_raw(raw: &sys::FlutterVulkanBackingStore) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterVulkanBackingStore) -> Self {
         assert!(
             raw.destruction_callback == Some(destroy_vulkan_callback),
             "from_raw(&sys::FlutterVulkanBackingStore) for a vulkan buffer for which we didn't set the destruction callback"
@@ -74,6 +76,7 @@ impl VulkanBackingStore {
 }
 
 pub trait VulkanRendererHandler {
+    #[allow(clippy::doc_markdown)] // ugh rewrite it later
     /// The callback invoked when resolving Vulkan function pointers.
     /// At a bare minimum this should be used to swap out any calls that operate
     /// on vkQueue's for threadsafe variants that obtain locks for their duration.
@@ -86,53 +89,53 @@ pub trait VulkanRendererHandler {
         instance: sys::FlutterVulkanInstanceHandle,
         name: &CStr,
     ) -> *mut std::ffi::c_void;
-    /// The callback invoked when the engine requests a VkImage from the embedder
+    /// The callback invoked when the engine requests a `VkImage` from the embedder
     /// for rendering the next frame.
-    /// Not used if a FlutterCompositor is supplied in FlutterProjectArgs.
+    /// Not used if a `FlutterCompositor` is supplied in `FlutterProjectArgs`.
     fn get_next_image(&mut self, frame_info: FrameInfo) -> VulkanImage;
-    /// The callback invoked when a VkImage has been written to and is ready for
+    /// The callback invoked when a `VkImage` has been written to and is ready for
     /// use by the embedder. Prior to calling this callback, the engine performs
-    /// a host sync, and so the VkImage can be used in a pipeline by the embedder
+    /// a host sync, and so the `VkImage` can be used in a pipeline by the embedder
     /// without any additional synchronization.
-    /// Not used if a FlutterCompositor is supplied in FlutterProjectArgs.
+    /// Not used if a `FlutterCompositor` is supplied in `FlutterProjectArgs`.
     fn present_image(&mut self, image: VulkanImage) -> bool;
 }
 
 pub struct VulkanRendererConfig {
     /// The Vulkan API version. This should match the value set in
-    /// VkApplicationInfo::apiVersion when the VkInstance was created.
+    /// `VkApplicationInfo::apiVersion` when the `VkInstance` was created.
     pub version: u32,
-    /// VkInstance handle. Must not be destroyed before `FlutterEngineShutdown` is
+    /// `VkInstance` handle. Must not be destroyed before `FlutterEngineShutdown` is
     /// called.
     pub instance: sys::FlutterVulkanInstanceHandle,
-    /// VkPhysicalDevice handle.
+    /// `VkPhysicalDevice` handle.
     pub physical_device: sys::FlutterVulkanPhysicalDeviceHandle,
-    /// VkDevice handle. Must not be destroyed before `FlutterEngineShutdown` is
+    /// `VkDevice` handle. Must not be destroyed before `FlutterEngineShutdown` is
     /// called.
     pub device: sys::FlutterVulkanDeviceHandle,
-    /// The queue family index of the VkQueue supplied in the next field.
+    /// The queue family index of the `VkQueue` supplied in the next field.
     pub queue_family_index: u32,
-    /// VkQueue handle.
+    /// `VkQueue` handle.
     /// The queue should not be used without protection from a mutex to make sure
     /// it is not used simultaneously with other threads. That mutex should match
-    /// the one injected via the |get_instance_proc_address_callback|.
+    /// the one injected via the `get_instance_proc_address_callback`.
     /// There is a proposal to remove the need for the mutex at
-    /// https://github.com/flutter/flutter/issues/134573.
+    /// <https://github.com/flutter/flutter/issues/134573>.
     pub queue: sys::FlutterVulkanQueueHandle,
     /// Array of enabled instance extension names. This should match the names
     /// passed to `VkInstanceCreateInfo.ppEnabledExtensionNames` when the instance
     /// was created, but any subset of enabled instance extensions may be
     /// specified.
     /// This field is optional; `nullptr` may be specified.
-    /// This memory is only accessed during the call to FlutterEngineInitialize.
+    /// This memory is only accessed during the call to `FlutterEngineInitialize`.
     pub enabled_instance_extensions: Vec<CString>,
     /// Array of enabled logical device extension names. This should match the
     /// names passed to `VkDeviceCreateInfo.ppEnabledExtensionNames` when the
     /// logical device was created, but any subset of enabled logical device
     /// extensions may be specified.
     /// This field is optional; `nullptr` may be specified.
-    /// This memory is only accessed during the call to FlutterEngineInitialize.
-    /// For example: VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
+    /// This memory is only accessed during the call to `FlutterEngineInitialize`.
+    /// For example: `VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME`
     pub enabled_device_extensions: Vec<CString>,
 
     pub handler: Box<dyn VulkanRendererHandler>,
@@ -182,7 +185,7 @@ mod callbacks {
         instance: sys::FlutterVulkanInstanceHandle,
         name: *const std::os::raw::c_char,
     ) -> *mut std::ffi::c_void {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::Vulkan(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -198,7 +201,7 @@ mod callbacks {
         engine_user_data: *mut std::ffi::c_void,
         frame_info: *const sys::FlutterFrameInfo,
     ) -> sys::FlutterVulkanImage {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::Vulkan(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -214,7 +217,7 @@ mod callbacks {
         engine_user_data: *mut std::ffi::c_void,
         image: *const sys::FlutterVulkanImage,
     ) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::Vulkan(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -265,10 +268,10 @@ impl From<VulkanRendererConfig> for (VulkanRendererUserData, sys::FlutterVulkanR
 
                 enabled_instance_extension_count: enabled_instance_extensions.len(),
                 enabled_instance_extensions: enabled_instance_extensions
-                    as *mut *const std::ffi::c_char,
+                    .cast::<*const std::ffi::c_char>(),
                 enabled_device_extension_count: enabled_device_extensions.len(),
                 enabled_device_extensions: enabled_device_extensions
-                    as *mut *const std::ffi::c_char,
+                    .cast::<*const std::ffi::c_char>(),
 
                 get_instance_proc_address_callback: Some(callbacks::get_instance_proc_address),
                 get_next_image_callback: Some(callbacks::get_next_image),

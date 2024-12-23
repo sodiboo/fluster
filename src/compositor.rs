@@ -2,7 +2,7 @@ use crate::{
     sys, BackingStore, BackingStoreConfig, PlatformViewMutation, Point, Region, Size, ViewId,
 };
 
-pub trait CompositorHandler {
+pub trait CompositorHandler: Send + Sync {
     /// A callback invoked by the engine to obtain a backing store for a specific
     /// `FlutterLayer`.
     fn create_backing_store(&mut self, config: BackingStoreConfig) -> Option<BackingStore>;
@@ -41,8 +41,8 @@ pub struct Layer {
     /// Indicates whether the contents of a layer are rendered by Flutter or the embedder.
     pub content: LayerContent,
 
-    /// Time in nanoseconds at which this frame is scheduled to be presented.
-    /// 0 if not known. See FlutterEngineGetCurrentTime().
+    /// Time in nanoseconds at which this frame is scheduled to be presented. 0 if not known.
+    /// See [`crate::Engine::get_current_time`].
     pub presentation_time: u64,
 }
 pub enum LayerContent {
@@ -52,7 +52,8 @@ pub enum LayerContent {
     PlatformView(PlatformView),
 }
 impl Layer {
-    pub fn from_raw(raw: &sys::FlutterLayer) -> Self {
+    #[must_use]
+    pub(crate) fn from_raw(raw: &sys::FlutterLayer) -> Self {
         Self {
             offset: raw.offset.into(),
             size: raw.size.into(),
@@ -81,11 +82,14 @@ impl Layer {
 }
 
 pub struct BackingStorePresentInfo {
+    // The area of the backing store that contains Flutter contents.
+    // Pixels outside of this area are transparent and the embedder may choose not to render them.
+    // Coordinates are in physical pixels.
     pub paint_region: Region,
 }
 
 impl BackingStorePresentInfo {
-    pub fn from_raw(raw: &sys::FlutterBackingStorePresentInfo) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterBackingStorePresentInfo) -> Self {
         Self {
             paint_region: Region::from_raw(unsafe { &*raw.paint_region }),
         }
@@ -113,7 +117,7 @@ pub struct PlatformView {
 }
 
 impl PlatformView {
-    pub fn from_raw(raw: &sys::FlutterPlatformView) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterPlatformView) -> Self {
         Self {
             identifier: raw.identifier,
             mutations: unsafe { std::slice::from_raw_parts(raw.mutations, raw.mutations_count) }
@@ -135,7 +139,8 @@ mod callbacks {
         backing_store_out: *mut sys::FlutterBackingStore,
         user_data: *mut std::ffi::c_void,
     ) -> bool {
-        let user_data = user_data as *mut CompositorUserData;
+        let user_data = user_data.cast::<CompositorUserData>();
+
         let user_data = unsafe { &mut *user_data };
 
         let backing_store_config = BackingStoreConfig::from(unsafe { *backing_store_config });
@@ -149,7 +154,7 @@ mod callbacks {
         backing_store: *const sys::FlutterBackingStore,
         user_data: *mut std::ffi::c_void,
     ) -> bool {
-        let user_data = user_data as *mut CompositorUserData;
+        let user_data = user_data.cast::<CompositorUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let backing_store = BackingStore::from_raw(unsafe { &*backing_store });
@@ -160,7 +165,7 @@ mod callbacks {
     pub extern "C" fn present_view(present_view_info: *const sys::FlutterPresentViewInfo) -> bool {
         let present_view_info = unsafe { &*present_view_info };
 
-        let user_data = present_view_info.user_data as *mut CompositorUserData;
+        let user_data = present_view_info.user_data.cast::<CompositorUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let layers: Box<[Layer]> = unsafe {
@@ -192,7 +197,7 @@ impl From<Compositor> for (*mut CompositorUserData, sys::FlutterCompositor) {
             user_data,
             sys::FlutterCompositor {
                 struct_size: std::mem::size_of::<sys::FlutterCompositor>(),
-                user_data: user_data as *mut std::ffi::c_void,
+                user_data: user_data.cast::<std::ffi::c_void>(),
                 create_backing_store_callback: Some(callbacks::create_backing_store),
                 collect_backing_store_callback: Some(callbacks::collect_backing_store),
                 avoid_backing_store_cache: compositor.avoid_backing_store_cache,

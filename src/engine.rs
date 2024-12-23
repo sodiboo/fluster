@@ -1,10 +1,13 @@
 use std::{
-    ffi::{CStr, CString, OsString},
+    ffi::{CStr, CString, OsStr},
     mem::ManuallyDrop,
     os::unix::ffi::OsStrExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
+
+use tracing::error;
 
 use crate::{
     sys, AOTData, Compositor, CompositorUserData, CustomTaskRunnerUserData, CustomTaskRunners,
@@ -13,13 +16,16 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq)] // HashSet?
 pub struct VsyncBaton(pub isize);
 
 pub struct PlatformMessageResponse {
     engine: sys::FlutterEngine,
     handle: *const sys::FlutterPlatformMessageResponseHandle,
 }
+
+// TODO: is this safe?
+unsafe impl Send for PlatformMessageResponse {}
 
 impl PlatformMessageResponse {
     pub fn send(self, response: &[u8]) -> crate::Result<()> {
@@ -41,8 +47,9 @@ impl PlatformMessageResponse {
 
 impl Drop for PlatformMessageResponse {
     fn drop(&mut self) {
-        eprintln!(
-            "PlatformMessageResponse dropped without sending a response. This is a memory leak."
+        error!(
+            "PlatformMessageResponse dropped without sending a response. \
+            This causes a memory leak."
         );
     }
 }
@@ -151,7 +158,8 @@ mod callbacks {
         message: *const sys::FlutterPlatformMessage,
         user_data: *mut std::ffi::c_void,
     ) {
-        let user_data = user_data as *mut EngineUserData;
+        tracing::trace!("platform_message_callback");
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let message = unsafe { &*message };
@@ -171,7 +179,8 @@ mod callbacks {
     }
 
     pub extern "C" fn vsync(user_data: *mut std::ffi::c_void, baton: isize) {
-        let user_data = user_data as *mut EngineUserData;
+        tracing::trace!("vsync");
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         user_data.handler.vsync(VsyncBaton(baton))
@@ -182,7 +191,7 @@ mod callbacks {
         message: *const std::os::raw::c_char,
         user_data: *mut std::ffi::c_void,
     ) {
-        let user_data = user_data as *mut EngineUserData;
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let tag = unsafe { CStr::from_ptr(tag) };
@@ -192,7 +201,7 @@ mod callbacks {
     }
 
     pub extern "C" fn on_pre_engine_restart(user_data: *mut std::ffi::c_void) {
-        let user_data = user_data as *mut EngineUserData;
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         user_data.handler.on_pre_engine_restart()
@@ -202,7 +211,7 @@ mod callbacks {
         update: *const sys::FlutterSemanticsUpdate2,
         user_data: *mut std::ffi::c_void,
     ) {
-        let user_data = user_data as *mut EngineUserData;
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let update = unsafe { &*update };
@@ -216,7 +225,7 @@ mod callbacks {
         channel_update: *const sys::FlutterChannelUpdate,
         user_data: *mut std::ffi::c_void,
     ) {
-        let user_data = user_data as *mut EngineUserData;
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let channel_update = unsafe { &*channel_update };
@@ -228,7 +237,7 @@ mod callbacks {
     }
 
     pub extern "C" fn root_isolate_create(user_data: *mut std::ffi::c_void) {
-        let user_data = user_data as *mut EngineUserData;
+        let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         user_data.handler.root_isolate_created();
@@ -280,17 +289,12 @@ impl Drop for EngineUserData {
     }
 }
 
-pub struct ProjectArgs {
-    /// The path to the Flutter assets directory containing project assets. The
-    /// string can be collected after the call to `FlutterEngineRun` returns.
-    pub assets_path: PathBuf,
-    /// The path to the `icudtl.dat` file for the project. The string can be
-    /// collected after the call to `FlutterEngineRun` returns. The string must
-    /// be NULL terminated.
-    pub icu_data_path: PathBuf,
-    /// The command line arguments used to initialize the project. The strings can
-    /// be collected after the call to `FlutterEngineRun` returns. The strings
-    /// must be `NULL` terminated.
+pub struct ProjectArgs<'a> {
+    /// The path to the Flutter assets directory containing project assets.
+    pub assets_path: &'a Path,
+    /// The path to the `icudtl.dat` file for the project.
+    pub icu_data_path: &'a Path,
+    /// The command line arguments used to initialize the project.
     ///
     /// @attention     The first item in the command line (if specified at all) is
     ///                interpreted as the executable name. So if an engine flag
@@ -303,7 +307,7 @@ pub struct ProjectArgs {
     /// runtime in the presence of un-sanitized input. The list of currently
     /// recognized engine flags and their descriptions can be retrieved from the
     /// `switches.h` engine source file.
-    pub command_line_argv: Vec<OsString>,
+    pub command_line_argv: &'a [&'a OsStr],
 
     /// Path to a directory used to store data that is cached across runs of a
     /// Flutter application (such as compiled shader programs used by Skia).
@@ -311,7 +315,7 @@ pub struct ProjectArgs {
     ///
     // This is different from the cache-path-dir argument defined in switches.h,
     // which is used in `flutter::Settings` as `temp_directory_path`.
-    pub persistent_cache_path: PathBuf,
+    pub persistent_cache_path: Option<PathBuf>,
 
     /// If true, the engine would only read the existing cache, but not write new
     /// ones.
@@ -324,7 +328,7 @@ pub struct ProjectArgs {
     /// Care must be taken to ensure that the custom entrypoint is not tree-shaken
     /// away. Usually, this is done using the `@pragma('vm:entry-point')`
     /// decoration.
-    pub custom_dart_entrypoint: Option<OsString>,
+    pub custom_dart_entrypoint: Option<&'a str>,
 
     /// Typically the Flutter engine create and manages its internal threads.
     /// This optional argument allows for the specification of task runner
@@ -366,13 +370,8 @@ pub struct ProjectArgs {
     /// the root surface as normal.
     pub compositor: Option<Compositor>,
 
-    /// The command line arguments passed through to the Dart entrypoint. The
-    /// strings must be `NULL` terminated.
-    ///
-    /// The strings will be copied out and so any strings passed in here can
-    /// be safely collected after initializing the engine with
-    /// `FlutterProjectArgs`.
-    pub dart_entrypoint_argv: Vec<OsString>,
+    /// The command line arguments passed through to the Dart entrypoint.
+    pub dart_entrypoint_argv: &'a [&'a str],
 
     // A tag string associated with application log messages.
     //
@@ -385,12 +384,12 @@ pub struct ProjectArgs {
     /// for default value.
     ///
     /// See also:
-    /// https://github.com/dart-lang/sdk/blob/ca64509108b3e7219c50d6c52877c85ab6a35ff2/runtime/vm/flag_list.h#L150
+    /// <https://github.com/dart-lang/sdk/blob/ca64509108b3e7219c50d6c52877c85ab6a35ff2/runtime/vm/flag_list.h#L150>
     pub dart_old_gen_heap_size: i64,
 
     /// The AOT data to be used in AOT operation.
     ///
-    /// The AOT data can be created with [AOTData::new], and will be released when the object is dropped.
+    /// The AOT data can be created with [`AOTData::new`], and will be released when the object is dropped.
     /// The engine holds an `Arc` to the data, so it will not be dropped until the engine is dropped.
     /// If you pass `shutdown_dart_vm_when_done: true`, the AOT data will **not** be dropped when the engine is dropped.
     /// In fact, it won't *ever* be dropped, because the Dart VM will not shut down. It will cause a memory leak.
@@ -405,7 +404,7 @@ pub struct ProjectArgs {
     /// This also means it cannot be wrapped in a safe manner. You must deal with raw pointers and unsafe code.
     /// You can also just set it to `None` if you don't need it.
     ///
-    /// The input parameter is an array of FlutterLocales which represent the
+    /// The input parameter is an array of [`sys::FlutterLocale`]s which represent the
     /// locales supported by the app. One of the input supported locales should
     /// be selected and returned to best match with the user/device's preferred
     /// locale. The implementation should produce a result that as closely
@@ -468,9 +467,10 @@ impl Engine {
             .expect("assets_path must be valid C string");
         let icu_data_path = CString::new(project_args.icu_data_path.as_os_str().as_bytes())
             .expect("icu_data_path must be valid C string");
-        let persistent_cache_path =
-            CString::new(project_args.persistent_cache_path.as_os_str().as_bytes())
-                .expect("persistent_cache_path must be valid C string");
+        let persistent_cache_path = project_args.persistent_cache_path.map(|p| {
+            CString::new(p.as_os_str().as_bytes())
+                .expect("persistent_cache_path must be valid C string")
+        });
 
         let custom_dart_entrypoint = project_args.custom_dart_entrypoint.as_ref().map(|s| {
             CString::new(s.as_bytes()).expect("custom_dart_entrypoint must be valid C string")
@@ -511,10 +511,14 @@ impl Engine {
         let raw_project_args = sys::FlutterProjectArgs {
             struct_size: std::mem::size_of::<sys::FlutterProjectArgs>(),
 
-            // these are all required
+            // these are required
             assets_path: assets_path.as_ptr(),
             icu_data_path: icu_data_path.as_ptr(),
-            persistent_cache_path: persistent_cache_path.as_ptr(),
+
+            // this one is optional
+            persistent_cache_path: persistent_cache_path
+                .as_deref()
+                .map_or_else(std::ptr::null, CStr::as_ptr),
             is_persistent_cache_read_only: project_args.is_persistent_cache_read_only,
 
             // the compositor is optional, so we set it to null if it doesn't exist
@@ -526,8 +530,7 @@ impl Engine {
             aot_data: project_args
                 .aot_data
                 .as_deref()
-                .map(|aot| aot.data)
-                .unwrap_or_else(std::ptr::null_mut),
+                .map_or_else(std::ptr::null_mut, |aot| aot.data),
 
             // just dart vm params
             shutdown_dart_vm_when_done: project_args.shutdown_dart_vm_when_done,
@@ -549,12 +552,22 @@ impl Engine {
             // these are all optional
             custom_dart_entrypoint: custom_dart_entrypoint
                 .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null()),
-            dart_entrypoint_argc: dart_entrypoint_argv.len() as i32,
+                .map_or_else(std::ptr::null, |s| s.as_ptr()),
+
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_possible_wrap,
+                reason = "can't do anything about it"
+            )]
+            dart_entrypoint_argc: dart_entrypoint_argv.len() as std::ffi::c_int,
             dart_entrypoint_argv: dart_entrypoint_argv.as_ptr(),
 
-            command_line_argc: command_line_argv.len() as i32,
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_possible_wrap,
+                reason = "can't do anything about it"
+            )]
+            command_line_argc: command_line_argv.len() as std::ffi::c_int,
             command_line_argv: command_line_argv.as_ptr(),
 
             log_tag: project_args.log_tag.as_ptr(),
@@ -590,7 +603,7 @@ impl Engine {
                 sys::FLUTTER_ENGINE_VERSION,
                 &raw const raw_renderer_config,
                 &raw const raw_project_args,
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
                 &raw mut engine,
             )
         }
@@ -613,11 +626,11 @@ impl Engine {
     /// The embedder should re-thread if needed.
     ///
     /// Attempting to add the implicit view will fail and will return
-    /// [crate::FlutterError::InvalidArguments]. Attempting to add a view with an already
+    /// [`crate::Error::InvalidArguments`]. Attempting to add a view with an already
     /// existing view ID will fail, and `callback` will be invoked with a value of false.
     ///
     /// Returns the result of *starting* the asynchronous operation.
-    /// If [Ok()], the `callback` will be invoked.
+    /// If [`Ok()`], the `callback` will be invoked.
     pub fn add_view(
         &mut self,
         view_id: ViewId,
@@ -628,17 +641,17 @@ impl Engine {
             callback: Box<dyn FnOnce(bool)>,
         }
 
-        let user_data = Box::new(UserData {
-            callback: Box::new(callback),
-        });
-
         extern "C" fn add_view_callback(result: *const sys::FlutterAddViewResult) {
             let result = unsafe { &*result };
-            let user_data = *unsafe { Box::from_raw(result.user_data as *mut UserData) };
+            let user_data = *unsafe { Box::from_raw(result.user_data.cast::<UserData>()) };
             (user_data.callback)(result.added);
         }
 
         const _: sys::FlutterAddViewCallback = Some(add_view_callback);
+
+        let user_data = Box::new(UserData {
+            callback: Box::new(callback),
+        });
 
         let user_data = Box::into_raw(user_data);
 
@@ -648,7 +661,7 @@ impl Engine {
             struct_size: std::mem::size_of::<sys::FlutterAddViewInfo>(),
             view_id: view_id.0,
             view_metrics: &raw const view_metrics,
-            user_data: user_data as *mut std::ffi::c_void,
+            user_data: user_data.cast::<std::ffi::c_void>(),
             add_view_callback: Some(add_view_callback),
         };
 
@@ -672,38 +685,38 @@ impl Engine {
     /// The embedder should re-thread if needed.
     ///
     /// Attempting to remove the implicit view will fail and will return
-    /// [crate::FlutterError::InvalidArguments]. Attempting to remove a view with a
+    /// [`crate::Error::InvalidArguments`]. Attempting to remove a view with a
     /// non-existent view ID will fail, and `callback` will be invoked with a value of false.
     ///
     /// Returns the result of *starting* the asynchronous operation.
-    /// If [Ok()], the `callback` will be invoked.
+    /// If [`Ok()`], the `callback` will be invoked.
     pub fn remove_view(
         &mut self,
         view_id: ViewId,
-        callback: impl FnOnce(bool) + 'static,
+        callback: impl FnOnce(bool) + Send + 'static,
     ) -> crate::Result<()> {
         struct UserData {
             callback: Box<dyn FnOnce(bool)>,
         }
 
-        let user_data = Box::new(UserData {
-            callback: Box::new(callback),
-        });
-
         extern "C" fn remove_view_callback(result: *const sys::FlutterRemoveViewResult) {
             let result = unsafe { &*result };
-            let user_data = *unsafe { Box::from_raw(result.user_data as *mut UserData) };
+            let user_data = *unsafe { Box::from_raw(result.user_data.cast::<UserData>()) };
             (user_data.callback)(result.removed);
         }
 
         const _: sys::FlutterRemoveViewCallback = Some(remove_view_callback);
+
+        let user_data = Box::new(UserData {
+            callback: Box::new(callback),
+        });
 
         let user_data = Box::into_raw(user_data);
 
         let info = sys::FlutterRemoveViewInfo {
             struct_size: std::mem::size_of::<sys::FlutterAddViewInfo>(),
             view_id: view_id.0,
-            user_data: user_data as *mut std::ffi::c_void,
+            user_data: user_data.cast::<std::ffi::c_void>(),
             remove_view_callback: Some(remove_view_callback),
         };
 
@@ -736,7 +749,7 @@ impl Engine {
     /// whether to handle this event in a synchronous fashion, although
     /// due to technical limitation, the result is always reported
     /// asynchronously. The `callback` is guaranteed to be called
-    /// exactly once, if and only if this function returns [Ok()].
+    /// exactly once, if and only if this function returns [`Ok()`].
     ///
     /// The callback invoked by the engine when the Flutter application
     /// has decided whether it handles this event.
@@ -749,16 +762,16 @@ impl Engine {
             callback: Box<dyn FnOnce(bool)>,
         }
 
-        let user_data = Box::new(UserData {
-            callback: Box::new(callback),
-        });
-
         extern "C" fn key_event_callback(handled: bool, user_data: *mut std::ffi::c_void) {
-            let user_data = *unsafe { Box::from_raw(user_data as *mut UserData) };
+            let user_data = *unsafe { Box::from_raw(user_data.cast::<UserData>()) };
             (user_data.callback)(handled);
         }
 
         const _: sys::FlutterKeyEventCallback = Some(key_event_callback);
+
+        let user_data = Box::new(UserData {
+            callback: Box::new(callback),
+        });
 
         let user_data = Box::into_raw(user_data);
 
@@ -769,7 +782,7 @@ impl Engine {
                 self.inner.engine,
                 &raw const key_event,
                 Some(key_event_callback),
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
             )
         }
         .to_result();
@@ -812,18 +825,12 @@ impl Engine {
             }
         }
 
-        let user_data = Box::new(UserData {
-            engine: self.inner.engine,
-            response: std::ptr::null_mut(),
-            callback: Some(Box::new(response)),
-        });
-
         extern "C" fn message_response(
             data: *const u8,
             size: usize,
             user_data: *mut std::ffi::c_void,
         ) {
-            let mut user_data = *unsafe { Box::from_raw(user_data as *mut UserData) };
+            let mut user_data = *unsafe { Box::from_raw(user_data.cast::<UserData>()) };
             let data = unsafe { std::slice::from_raw_parts(data, size) };
             let callback = user_data
                 .callback
@@ -834,6 +841,12 @@ impl Engine {
 
         const _: sys::FlutterDataCallback = Some(message_response);
 
+        let user_data = Box::new(UserData {
+            engine: self.inner.engine,
+            response: std::ptr::null_mut(),
+            callback: Some(Box::new(response)),
+        });
+
         let user_data = Box::into_raw(user_data);
 
         let mut response_handle: *mut sys::FlutterPlatformMessageResponseHandle =
@@ -843,7 +856,7 @@ impl Engine {
             sys::PlatformMessageCreateResponseHandle(
                 self.inner.engine,
                 Some(message_response),
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
                 &raw mut response_handle,
             )
         }
@@ -868,7 +881,7 @@ impl Engine {
 
     /// Notify the engine that a vsync event occurred.
     /// A baton passed to the platform via the vsync callback must be returned.
-    /// This call must be made on the thread on which the call to [Engine::run] was made.
+    /// This call must be made on the thread on which the call to [`Engine::run`] was made.
     ///
     /// Frame timepoints are in nanoseconds.
     ///
@@ -881,18 +894,21 @@ impl Engine {
     /// This is a hint the engine uses to schedule Dart VM garbage collection in periods in which
     /// the various threads are most likely to be idle.
     /// For example, for a 60Hz display, embedders should add 16.6 * 1e6 to the frame time field.
+    #[allow(clippy::needless_pass_by_value)] // intentional to enforce the type semantics
     pub fn on_vsync(
         &mut self,
         baton: VsyncBaton,
-        frame_start_time_nanos: u64,
-        frame_target_time_nanos: u64,
+        frame_start_time: Duration,
+        frame_target_time: Duration,
     ) -> crate::Result<()> {
         unsafe {
+            #[allow(clippy::cast_possible_truncation)] // that's just how the API do be
             sys::OnVsync(
                 self.inner.engine,
                 baton.0,
-                frame_start_time_nanos,
-                frame_target_time_nanos,
+                // intentional to enforce the type semantics
+                frame_start_time.as_nanos() as u64,
+                frame_target_time.as_nanos() as u64,
             )
         }
         .to_result()
@@ -905,14 +921,15 @@ impl Engine {
 
     /// Get the current time in nanoseconds from the clock used by the flutter engine.
     /// This is the system monotonic clock.
-    pub fn get_current_time() -> u64 {
-        unsafe { sys::GetCurrentTime() }
+    #[must_use]
+    pub fn get_current_time() -> Duration {
+        Duration::from_nanos(unsafe { sys::GetCurrentTime() })
     }
 
     /// Register an external texture with a unique (per engine) identifier.
     /// Only rendering backends that support external textures accept external texture registrations.
     /// After the external texture is registered,
-    /// the application can mark that a frame is available by calling [Self::mark_external_texture_frame_available].
+    /// the application can mark that a frame is available by calling [`Self::mark_external_texture_frame_available`].
     ///
     /// The parameter is the identifier of the texture to register  with the engine.
     /// The embedder may supply new frames to this texture using the same identifier.
@@ -946,7 +963,7 @@ impl Engine {
     ///
     /// Returns if the low memory notification was sent to the running engine instance.
     ///
-    /// Hint: combine this with something like https://crates.io/crates/psi
+    /// Hint: combine this with something like <https://crates.io/crates/psi>
     pub fn notify_low_memory_warning(&mut self) -> crate::Result<()> {
         unsafe { sys::NotifyLowMemoryWarning(self.inner.engine) }.to_result()
     }
@@ -969,7 +986,7 @@ impl Engine {
         }
 
         unsafe extern "C" fn next_frame_callback(user_data: *mut std::ffi::c_void) {
-            let user_data = user_data as *mut UserData;
+            let user_data = user_data.cast::<UserData>();
             let user_data = *unsafe { Box::from_raw(user_data) };
             (user_data.callback)();
         }
@@ -984,7 +1001,7 @@ impl Engine {
             sys::SetNextFrameCallback(
                 self.inner.engine,
                 Some(next_frame_callback),
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
             )
         }
         .to_result();

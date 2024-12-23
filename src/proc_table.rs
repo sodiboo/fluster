@@ -1,4 +1,4 @@
-use crate::{sys, crate::Result};
+use crate::sys;
 
 macro_rules! gen {
     (

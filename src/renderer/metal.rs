@@ -24,7 +24,7 @@ impl From<MetalBackingStore> for sys::FlutterMetalBackingStore {
 }
 
 impl MetalBackingStore {
-    pub fn from_raw(raw: &sys::FlutterMetalBackingStore) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterMetalBackingStore) -> Self {
         if raw.struct_size != std::mem::size_of::<MetalBackingStore>() {
             panic!("FlutterMetalBackingStore has an unexpected size. It likely has a union tag that i don't know how to handle. It cannot be safely used.");
         }

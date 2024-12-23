@@ -26,23 +26,20 @@ impl Engine {
                 country_code: locale
                     .country_code
                     .as_deref()
-                    .map(CStr::as_ptr)
-                    .unwrap_or(std::ptr::null()),
+                    .map_or_else(std::ptr::null, CStr::as_ptr),
                 script_code: locale
                     .script_code
                     .as_deref()
-                    .map(CStr::as_ptr)
-                    .unwrap_or(std::ptr::null()),
+                    .map_or_else(std::ptr::null, CStr::as_ptr),
                 variant_code: locale
                     .variant_code
                     .as_deref()
-                    .map(CStr::as_ptr)
-                    .unwrap_or(std::ptr::null()),
+                    .map_or_else(std::ptr::null, CStr::as_ptr),
             })
             .collect();
 
         let mut locales: Box<[*const sys::FlutterLocale]> =
-            locales.iter().map(|locale| locale as _).collect();
+            locales.iter().map(std::ptr::from_ref).collect();
 
         unsafe { sys::UpdateLocales(self.inner.engine, locales.as_mut_ptr(), locales.len()) }
             .to_result()

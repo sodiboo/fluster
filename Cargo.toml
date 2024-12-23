@@ -1,6 +1,13 @@
+[workspace]
+members = ["build-support"]
+
+[workspace.package]
+version = "0.1.0"
+
 [package]
 name = "fluster"
-version = "0.1.0"
+links = "flutter_engine"
+version.workspace = true
 edition = "2021"
 
 [features]
@@ -10,8 +17,9 @@ metal = ["dep:metal"]
 vulkan = []
 
 [dependencies]
+const_format = "0.2.33"
 metal = { version = "0.30.0", optional = true }
-with_builtin_macros = "0.1.0"
+tracing = "0.1.41"
 
 [build-dependencies]
 bindgen = "0.70.1"

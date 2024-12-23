@@ -1,6 +1,8 @@
 use std::{collections::HashMap, mem::ManuallyDrop};
 
-use crate::{sys, Damage, FrameInfo, PresentInfo, Transformation};
+use tracing::trace;
+
+use crate::{sys, FrameInfo, PresentInfo, Region, Transformation};
 
 pub enum OpenGLBackingStore {
     Texture(OpenGLTexture),
@@ -26,7 +28,7 @@ impl From<OpenGLBackingStore> for sys::FlutterOpenGLBackingStore {
 }
 
 impl OpenGLBackingStore {
-    pub fn from_raw(raw: &sys::FlutterOpenGLBackingStore) -> Self {
+    pub(crate) fn from_raw(raw: &sys::FlutterOpenGLBackingStore) -> Self {
         match raw.type_ {
             sys::FlutterOpenGLTargetType::Texture => {
                 OpenGLBackingStore::Texture(OpenGLTexture::from_raw(unsafe {
@@ -44,15 +46,15 @@ impl OpenGLBackingStore {
 }
 
 pub struct OpenGLTexture {
-    /// Target texture of the active texture unit (example GL_TEXTURE_2D or GL_TEXTURE_RECTANGLE).
+    /// Target texture of the active texture unit (example `GL_TEXTURE_2D` or `GL_TEXTURE_RECTANGLE`).
     pub target: u32,
     /// The name of the texture.
     pub name: u32,
-    /// The texture format (example GL_RGBA8).
+    /// The texture format (example `GL_RGBA8`).
     pub format: u32,
     /// Optional parameters for texture height/width, default is 0, non-zero means
     /// the texture has the specified width/height. Usually, when the texture type
-    /// is GL_TEXTURE_RECTANGLE, we need to specify the texture width/height to
+    /// is `GL_TEXTURE_RECTANGLE`, we need to specify the texture width/height to
     /// tell the embedder to scale when rendering.
     /// Width of the texture.
     pub width: usize,
@@ -62,7 +64,7 @@ pub struct OpenGLTexture {
 
 pub extern "C" fn destroy_opengl_texture_callback(user_data: *mut std::ffi::c_void) {
     let _ = user_data;
-    println!("destroy_opengl_texture_callback");
+    trace!("destroy_opengl_texture_callback");
 }
 const _: sys::VoidCallback = Some(destroy_opengl_texture_callback);
 
@@ -99,7 +101,7 @@ impl OpenGLTexture {
 
 pub struct OpenGLFramebuffer {
     /// The target of the color attachment of the frame-buffer. For example,
-    /// GL_TEXTURE_2D or GL_RENDERBUFFER. In case of ambiguity when dealing with
+    /// `GL_TEXTURE_2D` o`GL_RENDERBUFFER`ER. In case of ambiguity when dealing with
     /// Window bound frame-buffers, 0 may be used.
     pub target: u32,
     /// The name of the framebuffer.
@@ -108,7 +110,7 @@ pub struct OpenGLFramebuffer {
 
 extern "C" fn destroy_opengl_framebuffer_callback(user_data: *mut std::ffi::c_void) {
     let _ = user_data;
-    println!("destroy_opengl_framebuffer_callback");
+    trace!("destroy_opengl_framebuffer_callback");
 }
 const _: sys::VoidCallback = Some(destroy_opengl_framebuffer_callback);
 
@@ -195,23 +197,19 @@ pub trait OpenGLRendererHandler {
     /// Dirty region management will only render the areas of the screen that have
     /// changed in between frames, greatly reducing rendering times and energy
     /// consumption. To take advantage of these benefits, it is necessary to
-    /// define populate_existing_damage as a callback that takes user
-    /// data, an FBO ID, and an existing damage FlutterDamage. The callback should
+    /// define `populate_existing_damage` as a callback that takes user
+    /// data, an FBO ID, and an existing damage [`crate::Region`]. The callback should
     /// use the given FBO ID to identify the FBO's exisiting damage (i.e. areas
     /// that have changed since the FBO was last used) and use it to populate the
-    /// given existing damage variable. This callback is dependent on either
-    /// fbo_callback or fbo_with_frame_info_callback being defined as they are
-    /// responsible for providing populate_existing_damage with the FBO's
-    /// ID. Not specifying populate_existing_damage will result in full
+    /// given existing damage variable. Not specifying `populate_existing_damage` will result in full
     /// repaint (i.e. rendering all the pixels on the screen at every frame).
-    fn populate_existing_damage(&mut self, fbo_id: isize) -> Damage;
+    fn populate_existing_damage(&mut self, fbo_id: isize) -> Region;
 }
 
 pub struct OpenGLRendererConfig {
-    /// By default, the renderer config assumes that the FBO does not change for
-    /// the duration of the engine run. If this argument is true, the
-    /// engine will ask the embedder for an updated FBO target (via an
-    /// fbo_callback invocation) after a present call.
+    /// By default, the renderer config assumes that the FBO does not change for the duration of the engine run.
+    /// If this argument is true, the engine will ask the embedder for
+    /// an updated FBO target (via an `fbo_callback` invocation) after a present call.
     pub fbo_reset_after_present: bool,
 
     /// trait object that contains all the callbacks that the engine will invoke
@@ -228,15 +226,15 @@ pub(crate) struct OpenGLRendererUserData {
     /// Okay, so this is a fucking hack, lol.
     /// It is not clear to me that how i'm handling this is correct, but it seems to be the intended way.
     ///
-    /// We allocate a new damage array (Box<[sys::FlutterRect]>)
-    /// every time we call populate_existing_damage, and store it in the existing_damage_map.
+    /// We allocate a new damage array (Box<[`sys::FlutterRect`]>)
+    /// every time we call `populate_existing_damage`, and store it in the `existing_damage_map`.
     /// This is done at the start of a frame to get the damage region it should repaint.
-    /// Example: https://github.com/flutter/engine/blob/e7c3915fec137d1ba075bdaf07ad643040a0cf41/examples/glfw_drm/FlutterEmbedderGLFW.cc#L230-L232
+    /// Example: <https://github.com/flutter/engine/blob/e7c3915fec137d1ba075bdaf07ad643040a0cf41/examples/glfw_drm/FlutterEmbedderGLFW.cc#L230-L232>
     ///
-    /// When the engine calls present_with_info, the frame is *finished*.
-    /// No more repainint will happen, not for this framebuffer object (fbo_id) at least.
+    /// When the engine calls `present_with_info`, the frame is *finished*.
+    /// No more repaining will happen, not for this framebuffer object (`fbo_id`) at least.
     /// So, the engine is done with it. We should now drop it.
-    /// Example: https://github.com/flutter/engine/blob/e7c3915fec137d1ba075bdaf07ad643040a0cf41/examples/glfw_drm/FlutterEmbedderGLFW.cc#L162-L166
+    /// Example: <https://github.com/flutter/engine/blob/e7c3915fec137d1ba075bdaf07ad643040a0cf41/examples/glfw_drm/FlutterEmbedderGLFW.cc#L162-L166>
     ///
     /// Why doesn't this just have a destruction callback like some other objects?
     existing_damage_map: HashMap<isize, *mut [sys::FlutterRect]>,
@@ -247,7 +245,7 @@ mod callbacks {
     use crate::{sys, util::return_out_param, EngineUserData, PresentInfo, RendererUserData};
 
     pub extern "C" fn make_current(engine_user_data: *mut std::ffi::c_void) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -258,7 +256,7 @@ mod callbacks {
     }
 
     pub extern "C" fn clear_current(engine_user_data: *mut std::ffi::c_void) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -272,7 +270,7 @@ mod callbacks {
         engine_user_data: *mut std::ffi::c_void,
         present_info: *const sys::FlutterPresentInfo,
     ) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -282,11 +280,16 @@ mod callbacks {
         let present_info: PresentInfo = PresentInfo::from_raw(unsafe { &*present_info });
 
         // see field documentation for `existing_damage_map`
-        if let Some(existing_damage) = user_data
-            .existing_damage_map
-            .remove(&(present_info.fbo_id as isize))
-        {
-            let existing_damage = unsafe { Box::from_raw(existing_damage) };
+        if let Some(existing_damage) = user_data.existing_damage_map.remove(
+            &({
+                // bro it's flutter's fault for making these inconsistently typed
+                #[allow(clippy::cast_possible_wrap)]
+                {
+                    present_info.fbo_id as isize
+                }
+            }),
+        ) {
+            let existing_damage: Box<_> = unsafe { Box::from_raw(existing_damage) };
             drop(existing_damage);
         }
 
@@ -297,7 +300,7 @@ mod callbacks {
         engine_user_data: *mut std::ffi::c_void,
         frame_info: *const sys::FlutterFrameInfo,
     ) -> u32 {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -310,7 +313,7 @@ mod callbacks {
     }
 
     pub extern "C" fn make_resource_current(engine_user_data: *mut std::ffi::c_void) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -323,7 +326,7 @@ mod callbacks {
     pub extern "C" fn surface_transformation(
         engine_user_data: *mut std::ffi::c_void,
     ) -> sys::FlutterTransformation {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -337,7 +340,7 @@ mod callbacks {
         engine_user_data: *mut std::ffi::c_void,
         name: *const std::os::raw::c_char,
     ) -> *mut std::ffi::c_void {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -354,7 +357,7 @@ mod callbacks {
         height: usize,
         texture_out: *mut sys::FlutterOpenGLTexture,
     ) -> bool {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -376,7 +379,7 @@ mod callbacks {
         fbo_id: isize,
         existing_damage_out: *mut sys::FlutterDamage,
     ) {
-        let engine_user_data = engine_user_data as *mut EngineUserData;
+        let engine_user_data = engine_user_data.cast::<EngineUserData>();
         let engine_user_data = unsafe { &mut *engine_user_data };
 
         let RendererUserData::OpenGL(user_data) = &mut engine_user_data.renderer_user_data else {
@@ -386,9 +389,9 @@ mod callbacks {
         let existing_damage: Box<[sys::FlutterRect]> = user_data
             .handler
             .populate_existing_damage(fbo_id)
-            .damage
+            .regions
             .into_iter()
-            .map(|rect| rect.into())
+            .map(Into::into)
             .collect::<Vec<sys::FlutterRect>>()
             .into_boxed_slice();
 
@@ -403,7 +406,7 @@ mod callbacks {
             existing_damage_out.write(sys::FlutterDamage {
                 struct_size: std::mem::size_of::<sys::FlutterDamage>(),
                 num_rects: existing_damage.len(),
-                damage: existing_damage as *mut sys::FlutterRect,
+                damage: existing_damage.cast::<sys::FlutterRect>(),
             });
         }
     }

@@ -6,6 +6,7 @@ use crate::sys;
 // But i may as well make it generic. It's some upfront boilerplate, which i just copy-pasted from Smithay.
 // Makes it easier to add arbitrary conversions to other geometry types.
 
+#[allow(clippy::return_self_not_must_use)]
 pub trait Coordinate:
     Sized
     + ops::Add<Self, Output = Self>
@@ -79,11 +80,13 @@ macro_rules! unsigned_coordinate_impl {
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn to_f64(self) -> f64 {
                 self as f64
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn from_f64(v: f64) -> Self {
                 v as Self
             }
@@ -153,11 +156,13 @@ macro_rules! signed_coordinate_impl {
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn to_f64(self) -> f64 {
                 self as f64
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn from_f64(v: f64) -> Self {
                 v as Self
             }
@@ -226,11 +231,13 @@ macro_rules! floating_point_coordinate_impl {
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn to_f64(self) -> f64 {
                 self as f64
             }
 
             #[inline]
+            #[allow(clippy::pedantic)]
             fn from_f64(v: f64) -> Self {
                 v as Self
             }
@@ -391,6 +398,7 @@ geometry_structs! {
 }
 
 impl<N: Coordinate> Transformation<N> {
+    #[must_use]
     pub fn identity() -> Self {
         Self {
             scaleX: N::one(),

@@ -15,8 +15,8 @@ pub struct Display {
     pub display_id: sys::FlutterEngineDisplayId,
 
     /// This is set to true if the embedder only has one display.
-    /// In cases where this is set to true, the value of display_id is ignored.
-    /// In cases where this is not set to true, it is expected that a valid display_id be provided.
+    /// In cases where this is set to true, the value of `display_id` is ignored.
+    /// In cases where this is not set to true, it is expected that a valid `display_id` be provided.
     pub single_display: bool,
 
     /// This represents the refresh period in frames per second.
@@ -56,8 +56,7 @@ impl Engine {
         update_type: DisplaysUpdateType,
         displays: &[Display],
     ) -> crate::Result<()> {
-        let displays: Box<[sys::FlutterEngineDisplay]> =
-            displays.iter().map(|display| display.into()).collect();
+        let displays: Box<[sys::FlutterEngineDisplay]> = displays.iter().map(Into::into).collect();
 
         unsafe {
             sys::NotifyDisplayUpdate(

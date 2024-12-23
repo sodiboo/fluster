@@ -83,7 +83,8 @@ impl Engine {
                     struct_size: std::mem::size_of::<sys::FlutterEngineDartBuffer>(),
                     user_data: std::ptr::null_mut(),
                     buffer_collect_callback: None,
-                    buffer: buf.as_ptr() as *mut u8, // actually `*const u8` when `buffer_collect_callback: None`
+                    // SAFETY: when `buffer_collect_callback` is `None`, then the engine pinky promises to treat this as immutable
+                    buffer: buf.as_ptr().cast_mut(),
                     buffer_size: buf.len(),
                 };
                 sys::FlutterEngineDartObject {
@@ -99,7 +100,7 @@ impl Engine {
                 }
 
                 unsafe extern "C" fn buffer_collect(user_data: *mut std::ffi::c_void) {
-                    let user_data = user_data as *mut UserData;
+                    let user_data = user_data.cast::<UserData>();
                     let user_data = unsafe { Box::from_raw(user_data) };
                     (user_data.collect)()
                 }
@@ -110,9 +111,9 @@ impl Engine {
 
                 buffer = sys::FlutterEngineDartBuffer {
                     struct_size: std::mem::size_of::<sys::FlutterEngineDartBuffer>(),
-                    user_data: user_data as *mut std::ffi::c_void,
+                    user_data: user_data.cast::<std::ffi::c_void>(),
                     buffer_collect_callback: Some(buffer_collect),
-                    buffer: data as *mut u8,
+                    buffer: data.cast::<u8>(),
                     buffer_size: data.len(),
                 };
                 sys::FlutterEngineDartObject {

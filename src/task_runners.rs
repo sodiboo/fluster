@@ -1,3 +1,5 @@
+use tracing::error;
+
 use crate::{sys, Engine};
 
 pub struct Task {
@@ -6,6 +8,7 @@ pub struct Task {
 }
 
 impl Task {
+    #[must_use]
     pub fn task(&self) -> u64 {
         self.task
     }
@@ -22,7 +25,7 @@ impl From<Task> for sys::FlutterTask {
 
 impl Engine {
     /// Inform the engine to run the specified task.
-    /// This task has been given to the engine via the [TaskRunnerHandler::post_task].
+    /// This task has been given to the engine via the [`TaskRunnerHandler::post_task`].
     /// This call must only be made at the target time specified in that callback.
     /// Running the task before that time is undefined behavior.
     pub fn run_task(&mut self, task: Task) -> crate::Result<()> {
@@ -41,11 +44,11 @@ pub trait TaskRunnerHandler {
 
     /// May be called from any thread.
     /// The given task should be executed by the embedder on the thread associated
-    /// with that task runner by calling [crate::Engine::run_task] at the given target time.
+    /// with that task runner by calling [`crate::Engine::run_task`] at the given target time.
     /// The system monotonic clock should be used for the target time.
     /// The target time is the absolute time from epoch (NOT a delta) at which the task
     /// must be returned back to the engine on the correct thread.
-    /// If the embedder needs to calculate a delta, [crate::Engine::get_current_time]
+    /// If the embedder needs to calculate a delta, [`crate::Engine::get_current_time`]
     /// may be called and the difference used as the delta.
     fn post_task(&mut self, target_time_nanos: u64, task: Task);
 }
@@ -65,7 +68,7 @@ pub(crate) struct TaskRunnerUserData {
 }
 
 extern "C" fn runs_task_on_current_thread(user_data: *mut std::ffi::c_void) -> bool {
-    let user_data = user_data as *mut TaskRunnerUserData;
+    let user_data = user_data.cast::<TaskRunnerUserData>();
     let user_data = unsafe { &mut *user_data };
 
     user_data.handler.runs_task_on_current_thread()
@@ -76,7 +79,7 @@ extern "C" fn post_task(
     target_time_nanos: u64,
     user_data: *mut std::ffi::c_void,
 ) {
-    let user_data = user_data as *mut TaskRunnerUserData;
+    let user_data = user_data.cast::<TaskRunnerUserData>();
     let user_data = unsafe { &mut *user_data };
 
     user_data.handler.post_task(
@@ -103,7 +106,7 @@ impl From<TaskRunnerDescription> for (*mut TaskRunnerUserData, sys::FlutterTaskR
             user_data,
             sys::FlutterTaskRunnerDescription {
                 struct_size: std::mem::size_of::<sys::FlutterTaskRunnerDescription>(),
-                user_data: user_data as *mut std::ffi::c_void,
+                user_data: user_data.cast::<std::ffi::c_void>(),
 
                 runs_task_on_current_thread_callback: Some(runs_task_on_current_thread),
                 post_task_callback: Some(post_task),
@@ -215,7 +218,7 @@ impl Engine {
         }
 
         unsafe extern "C" fn task_callback(user_data: *mut std::ffi::c_void) {
-            let user_data = user_data as *mut UserData;
+            let user_data = user_data.cast::<UserData>();
             let user_data = *unsafe { Box::from_raw(user_data) };
             (user_data.callback)();
         }
@@ -230,7 +233,7 @@ impl Engine {
             sys::PostRenderThreadTask(
                 self.inner.engine,
                 Some(task_callback),
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
             )
         }
         .to_result();
@@ -259,12 +262,12 @@ impl Engine {
             kind: sys::FlutterNativeThreadType,
             user_data: *mut std::ffi::c_void,
         ) {
-            let user_data = user_data as *mut UserData;
+            let user_data = user_data.cast::<UserData>();
             let user_data = unsafe { &*user_data };
             match kind.try_into() {
                 Ok(kind) => (user_data.callback)(kind),
                 Err(kind) => {
-                    eprintln!("Invalid FlutterNativeThreadType: {kind:?}");
+                    error!("Invalid FlutterNativeThreadType: {kind:?}");
                 }
             }
         }
@@ -279,7 +282,7 @@ impl Engine {
             sys::PostCallbackOnAllNativeThreads(
                 self.inner.engine,
                 Some(thread_callback),
-                user_data as *mut std::ffi::c_void,
+                user_data.cast::<std::ffi::c_void>(),
             )
         }
         .to_result();

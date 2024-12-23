@@ -96,7 +96,7 @@ impl From<BackingStore> for sys::FlutterBackingStore {
 }
 
 impl BackingStore {
-    pub fn from_raw(backing_store: &sys::FlutterBackingStore) -> Self {
+    pub(crate) fn from_raw(backing_store: &sys::FlutterBackingStore) -> Self {
         match backing_store.type_ {
             #[cfg(feature = "opengl")]
             sys::FlutterBackingStoreType::OpenGL => {
