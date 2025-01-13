@@ -40,6 +40,9 @@ impl OpenGLBackingStore {
                     &raw.__bindgen_anon_1.framebuffer
                 }))
             }
+            sys::FlutterOpenGLTargetType::Surface => {
+                unimplemented!();
+            }
             _ => unreachable!("Unknown FlutterOpenGLTargetType. Cannot use it."),
         }
     }

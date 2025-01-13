@@ -61,6 +61,7 @@ impl_drop_for_tagged_union! {
             unsafe match self.type_: FlutterOpenGLTargetType {
                 Texture => union.texture,
                 Framebuffer => union.framebuffer,
+                Surface => union.surface,
             } else {
                 panic!("Unknown FlutterOpenGLTargetType. Cannot drop it.");
             }
