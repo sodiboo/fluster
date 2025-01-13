@@ -151,12 +151,12 @@ const _CHECK_ENGINE_VERSION: () = {
             panic!("{}", ::const_format::formatcp!(
                 r"
 
-                The `fluster` crate was authored against the stable Flutter API at version {TARGET_VERSION}.
+                The `volito` crate was authored against the stable Flutter API at version {TARGET_VERSION}.
                 There has been a serious breakage in the API. It is now at version {FLUTTER_ENGINE_VERSION}.
 
-                Please check for updates to the `fluster` crate, and consult the Flutter changelog for breaking changes.
+                Please check for updates to the `volito` crate, and consult the Flutter changelog for breaking changes.
 
-                You can also try downgrading the Flutter engine to the version that `fluster` was authored against.
+                You can also try downgrading the Flutter engine to the version that `volito` was authored against.
                 There is no way to proceed with the current version of the Flutter engine.
 
                 "

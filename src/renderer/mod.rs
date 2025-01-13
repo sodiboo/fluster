@@ -109,7 +109,7 @@ impl BackingStore {
                 panic!("OpenGL feature is not enabled. Cannot create the backing store.")
             }
             sys::FlutterBackingStoreType::Software => {
-                // unreachable!() because fluster never constructs this type; you have to use underlying sys apis to construct it.
+                // unreachable!() because voltio never constructs this type; you have to use underlying sys apis to construct it.
                 unreachable!(
                     "Deprecated software backing store type is unsupported. Don't construct it."
                 )

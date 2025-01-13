@@ -181,7 +181,7 @@ fn main() {
             .map(|s| s.as_str())
             .collect::<Vec<_>>();
 
-        const LINK_HOST: &str = "FLUSTER_LINK_HOST";
+        const LINK_HOST: &str = "VOLITO_LINK_HOST";
 
         fn auto_find_impl(
             path: &mut PathBuf,

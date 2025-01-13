@@ -139,24 +139,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fluster"
-version = "0.1.0"
-dependencies = [
- "bindgen",
- "const_format",
- "metal",
- "pkg-config",
- "tracing",
-]
-
-[[package]]
-name = "fluster-build-support"
-version = "0.1.0"
-dependencies = [
- "which",
-]
-
-[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -449,6 +431,24 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "volito"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "const_format",
+ "metal",
+ "pkg-config",
+ "tracing",
+]
+
+[[package]]
+name = "volito-build-support"
+version = "0.1.0"
+dependencies = [
+ "which",
+]
 
 [[package]]
 name = "which"

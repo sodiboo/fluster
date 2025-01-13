@@ -5,7 +5,7 @@ members = ["build-support"]
 version = "0.1.0"
 
 [package]
-name = "fluster"
+name = "volito"
 links = "flutter_engine"
 version.workspace = true
 edition = "2021"

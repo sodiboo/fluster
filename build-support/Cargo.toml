@@ -1,5 +1,5 @@
 [package]
-name = "fluster-build-support"
+name = "volito-build-support"
 version.workspace = true
 edition = "2024"
 
