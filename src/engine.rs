@@ -849,15 +849,12 @@ impl Engine {
 
         let user_data = Box::into_raw(user_data);
 
-        let mut response_handle: *mut sys::FlutterPlatformMessageResponseHandle =
-            std::ptr::null_mut();
-
         if let Err(err) = unsafe {
             sys::PlatformMessageCreateResponseHandle(
                 self.inner.engine,
                 Some(message_response),
                 user_data.cast::<std::ffi::c_void>(),
-                &raw mut response_handle,
+                &raw mut (*user_data).response,
             )
         }
         .to_result()
@@ -873,7 +870,7 @@ impl Engine {
             channel: channel.as_ptr(),
             message: message.as_ptr(),
             message_size: message.len(),
-            response_handle,
+            response_handle: unsafe { (*user_data).response },
         };
 
         unsafe { sys::SendPlatformMessage(self.inner.engine, &raw const message) }.to_result()
