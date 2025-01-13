@@ -243,7 +243,7 @@ impl AttributedString {
     ) -> Self {
         Self {
             string: unsafe { CStr::from_ptr(string) }.to_owned(),
-            attributes: unsafe { std::slice::from_raw_parts(attributes, attribute_count) }
+            attributes: unsafe { crate::util::slice_from_raw_parts_with_invalid_empty(attributes, attribute_count) }
                 .iter()
                 .copied()
                 .map(|raw| unsafe { &*raw })
@@ -367,15 +367,15 @@ impl SemanticsNode {
             transform: raw.transform.into(),
             child_count: raw.child_count,
             children_in_traversal_order: unsafe {
-                std::slice::from_raw_parts(raw.children_in_traversal_order, raw.child_count)
+                crate::util::slice_from_raw_parts_with_invalid_empty(raw.children_in_traversal_order, raw.child_count)
             }
             .to_vec(),
             children_in_hit_test_order: unsafe {
-                std::slice::from_raw_parts(raw.children_in_hit_test_order, raw.child_count)
+                crate::util::slice_from_raw_parts_with_invalid_empty(raw.children_in_hit_test_order, raw.child_count)
             }
             .to_vec(),
             custom_accessibility_actions: unsafe {
-                std::slice::from_raw_parts(
+                crate::util::slice_from_raw_parts_with_invalid_empty(
                     raw.custom_accessibility_actions,
                     raw.custom_accessibility_actions_count,
                 )
@@ -429,14 +429,14 @@ pub struct SemanticsUpdate {
 impl SemanticsUpdate {
     pub(crate) fn from_raw(raw: &sys::FlutterSemanticsUpdate2) -> Self {
         Self {
-            nodes: unsafe { std::slice::from_raw_parts(raw.nodes, raw.node_count) }
+            nodes: unsafe { crate::util::slice_from_raw_parts_with_invalid_empty(raw.nodes, raw.node_count) }
                 .iter()
                 .copied()
                 .map(|raw| unsafe { &*raw })
                 .map(SemanticsNode::from_raw)
                 .collect(),
             custom_actions: unsafe {
-                std::slice::from_raw_parts(raw.custom_actions, raw.custom_action_count)
+                crate::util::slice_from_raw_parts_with_invalid_empty(raw.custom_actions, raw.custom_action_count)
             }
             .iter()
             .copied()

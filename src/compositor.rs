@@ -120,12 +120,17 @@ impl PlatformView {
     pub(crate) fn from_raw(raw: &sys::FlutterPlatformView) -> Self {
         Self {
             identifier: raw.identifier,
-            mutations: unsafe { std::slice::from_raw_parts(raw.mutations, raw.mutations_count) }
-                .iter()
-                .copied()
-                .map(|raw| unsafe { *raw })
-                .map(PlatformViewMutation::from)
-                .collect(),
+            mutations: unsafe {
+                crate::util::slice_from_raw_parts_with_invalid_empty(
+                    raw.mutations,
+                    raw.mutations_count,
+                )
+            }
+            .iter()
+            .copied()
+            .map(|raw| unsafe { *raw })
+            .map(PlatformViewMutation::from)
+            .collect(),
         }
     }
 }
@@ -169,7 +174,10 @@ mod callbacks {
         let user_data = unsafe { &mut *user_data };
 
         let layers: Box<[Layer]> = unsafe {
-            std::slice::from_raw_parts(present_view_info.layers, present_view_info.layers_count)
+            crate::util::slice_from_raw_parts_with_invalid_empty(
+                present_view_info.layers,
+                present_view_info.layers_count,
+            )
         }
         .iter()
         .copied()

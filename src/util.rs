@@ -68,3 +68,14 @@ pub(crate) unsafe fn return_out_param<T>(out: *mut T, value: Option<impl Into<T>
         false
     }
 }
+
+pub(crate) unsafe fn slice_from_raw_parts_with_invalid_empty<'a, T>(
+    slice: *const T,
+    len: usize,
+) -> &'a [T] {
+    if len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(slice, len) }
+    }
+}

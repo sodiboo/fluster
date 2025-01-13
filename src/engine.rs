@@ -158,15 +158,18 @@ mod callbacks {
         message: *const sys::FlutterPlatformMessage,
         user_data: *mut std::ffi::c_void,
     ) {
-        tracing::trace!("platform_message_callback");
         let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
         let message = unsafe { &*message };
 
         let channel = unsafe { CStr::from_ptr(message.channel) };
-        let message_content =
-            unsafe { std::slice::from_raw_parts(message.message, message.message_size) };
+        let message_content = unsafe {
+            crate::util::slice_from_raw_parts_with_invalid_empty(
+                message.message,
+                message.message_size,
+            )
+        };
 
         let response = PlatformMessageResponse {
             engine: user_data.engine,
@@ -179,7 +182,6 @@ mod callbacks {
     }
 
     pub extern "C" fn vsync(user_data: *mut std::ffi::c_void, baton: isize) {
-        tracing::trace!("vsync");
         let user_data = user_data.cast::<EngineUserData>();
         let user_data = unsafe { &mut *user_data };
 
@@ -831,7 +833,8 @@ impl Engine {
             user_data: *mut std::ffi::c_void,
         ) {
             let mut user_data = *unsafe { Box::from_raw(user_data.cast::<UserData>()) };
-            let data = unsafe { std::slice::from_raw_parts(data, size) };
+
+            let data = unsafe { crate::util::slice_from_raw_parts_with_invalid_empty(data, size) };
             let callback = user_data
                 .callback
                 .take()
