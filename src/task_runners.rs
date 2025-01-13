@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use tracing::error;
 
 use crate::{sys, Engine};
@@ -6,6 +8,9 @@ pub struct Task {
     runner: sys::FlutterTaskRunner,
     task: u64,
 }
+
+// TODO: is this safe?
+unsafe impl Send for Task {}
 
 impl Task {
     #[must_use]
@@ -37,10 +42,10 @@ impl Engine {
 /// An interface used by the Flutter engine to execute tasks at the target time on a specified thread.
 /// There should be a 1-1 relationship between a thread and a task runner.
 /// It is undefined behavior to run a task on a thread that is not associated with its task runner.
-pub trait TaskRunnerHandler {
+pub trait TaskRunnerHandler: Sync {
     /// May be called from any thread.
     /// Should return true if tasks posted on the calling thread will be run on that same thread.
-    fn runs_task_on_current_thread(&mut self) -> bool;
+    fn runs_task_on_current_thread(&self) -> bool;
 
     /// May be called from any thread.
     /// The given task should be executed by the embedder on the thread associated
@@ -50,7 +55,7 @@ pub trait TaskRunnerHandler {
     /// must be returned back to the engine on the correct thread.
     /// If the embedder needs to calculate a delta, [`crate::Engine::get_current_time`]
     /// may be called and the difference used as the delta.
-    fn post_task(&mut self, target_time_nanos: u64, task: Task);
+    fn post_task(&self, target_time: Duration, task: Task);
 }
 
 /// An interface used by the Flutter engine to execute tasks at the target time on a specified thread.
@@ -69,7 +74,7 @@ pub(crate) struct TaskRunnerUserData {
 
 extern "C" fn runs_task_on_current_thread(user_data: *mut std::ffi::c_void) -> bool {
     let user_data = user_data.cast::<TaskRunnerUserData>();
-    let user_data = unsafe { &mut *user_data };
+    let user_data = unsafe { &*user_data };
 
     user_data.handler.runs_task_on_current_thread()
 }
@@ -80,10 +85,10 @@ extern "C" fn post_task(
     user_data: *mut std::ffi::c_void,
 ) {
     let user_data = user_data.cast::<TaskRunnerUserData>();
-    let user_data = unsafe { &mut *user_data };
+    let user_data = unsafe { &*user_data };
 
     user_data.handler.post_task(
-        target_time_nanos,
+        Duration::from_nanos(target_time_nanos),
         Task {
             runner: task.runner,
             task: task.task,
@@ -122,66 +127,78 @@ pub struct CustomTaskRunners {
     /// call is made. The same task runner description can be specified for both
     /// the render and platform task runners. This makes the Flutter engine use
     /// the same thread for both task runners.
-    pub platform_task_runner: TaskRunnerDescription,
+    pub platform_task_runner: Option<TaskRunnerDescription>,
 
     /// Specify the task runner for the thread on which the render tasks will be
     /// run. The same task runner description can be specified for both the render
     /// and platform task runners. This makes the Flutter engine use the same
     /// thread for both task runners.
-    pub render_task_runner: TaskRunnerDescription,
+    pub render_task_runner: Option<TaskRunnerDescription>,
 
     /// Specify a callback that is used to set the thread priority for embedder
     /// task runners.
-    pub set_thread_priority: extern "C" fn(sys::FlutterThreadPriority),
+    pub set_thread_priority: Option<extern "C" fn(sys::FlutterThreadPriority)>,
 }
 
 pub(crate) struct CustomTaskRunnerUserData {
-    platform_udata: *mut TaskRunnerUserData,
-    platform_desc: *mut sys::FlutterTaskRunnerDescription,
-    render_udata: *mut TaskRunnerUserData,
-    render_desc: *mut sys::FlutterTaskRunnerDescription,
+    platform: Option<(
+        *mut TaskRunnerUserData,
+        *mut sys::FlutterTaskRunnerDescription,
+    )>,
+    render: Option<(
+        *mut TaskRunnerUserData,
+        *mut sys::FlutterTaskRunnerDescription,
+    )>,
 }
 
 impl Drop for CustomTaskRunnerUserData {
     fn drop(&mut self) {
         unsafe {
-            let platform_udata = Box::from_raw(self.platform_udata);
-            let platform_desc = Box::from_raw(self.platform_desc);
-            let render_udata = Box::from_raw(self.render_udata);
-            let render_desc = Box::from_raw(self.render_desc);
+            if let Some((user_data, desc)) = self.platform.take() {
+                let user_data = Box::from_raw(user_data);
+                let desc = Box::from_raw(desc);
 
-            drop(platform_desc);
-            drop(render_desc);
+                drop(desc);
+                drop(user_data);
+            }
 
-            drop(platform_udata);
-            drop(render_udata);
+            if let Some((user_data, desc)) = self.render.take() {
+                let user_data = Box::from_raw(user_data);
+                let desc = Box::from_raw(desc);
+
+                drop(desc);
+                drop(user_data);
+            }
         }
     }
 }
 
 impl From<CustomTaskRunners> for (CustomTaskRunnerUserData, sys::FlutterCustomTaskRunners) {
     fn from(runners: CustomTaskRunners) -> Self {
-        let (platform_udata, platform_desc) = runners.platform_task_runner.into();
-        let (render_udata, render_desc) = runners.render_task_runner.into();
-
-        let platform_desc = Box::new(platform_desc);
-        let render_desc = Box::new(render_desc);
-
-        let platform_desc = Box::into_raw(platform_desc);
-        let render_desc = Box::into_raw(render_desc);
+        let platform = runners
+            .platform_task_runner
+            .map(Into::into)
+            .map(|(user_data, desc)| {
+                let desc = Box::new(desc);
+                let desc = Box::into_raw(desc);
+                (user_data, desc)
+            });
+        let render = runners
+            .render_task_runner
+            .map(Into::into)
+            .map(|(user_data, desc)| {
+                let desc = Box::new(desc);
+                let desc = Box::into_raw(desc);
+                (user_data, desc)
+            });
 
         (
-            CustomTaskRunnerUserData {
-                platform_udata,
-                platform_desc,
-                render_udata,
-                render_desc,
-            },
+            CustomTaskRunnerUserData { platform, render },
             sys::FlutterCustomTaskRunners {
                 struct_size: std::mem::size_of::<sys::FlutterCustomTaskRunners>(),
-                platform_task_runner: platform_desc,
-                render_task_runner: render_desc,
-                thread_priority_setter: Some(runners.set_thread_priority),
+                platform_task_runner: platform.map_or_else(std::ptr::null_mut, |(_, desc)| desc),
+                render_task_runner: render.map_or_else(std::ptr::null_mut, |(_, desc)| desc),
+                thread_priority_setter: runners.set_thread_priority.map(|x| x as _),
             },
         )
     }
