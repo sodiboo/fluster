@@ -100,10 +100,12 @@ impl OpenGLTexture {
 }
 
 pub struct OpenGLFramebuffer {
-    /// The target of the color attachment of the frame-buffer. For example,
-    /// `GL_TEXTURE_2D` o`GL_RENDERBUFFER`ER. In case of ambiguity when dealing with
-    /// Window bound frame-buffers, 0 may be used.
-    pub target: u32,
+    /// The format of the color attachment of the frame-buffer. For example,
+    /// GL_RGBA8.
+    ///
+    /// In case of ambiguity when dealing with Window bound frame-buffers, 0 may
+    /// be used.
+    pub format: u32,
     /// The name of the framebuffer.
     pub name: u32,
 }
@@ -120,7 +122,8 @@ impl From<OpenGLFramebuffer> for sys::FlutterOpenGLFramebuffer {
             user_data: std::ptr::null_mut(),
             destruction_callback: Some(destroy_opengl_framebuffer_callback),
 
-            target: framebuffer.target,
+            // flutter embedder bug: this field is incorrectly named `target` instead of `format`
+            target: framebuffer.format,
             name: framebuffer.name,
         }
     }
@@ -132,7 +135,7 @@ impl OpenGLFramebuffer {
         );
 
         Self {
-            target: raw.target,
+            format: raw.target,
             name: raw.name,
         }
     }
